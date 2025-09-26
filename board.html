@@ -48,19 +48,21 @@
     tr:nth-child(even) {
       background: #f9f9f9;
     }
-    input {
+    input[type="text"] {
       width: 95%;
       padding: 0.2rem;
     }
-
-    /* Column widths matching your Word doc */
-    th:nth-child(1), td:nth-child(1) { width: 10%; }  /* POSITION */
-    th:nth-child(2), td:nth-child(2) { width: 12%; }  /* NAME */
-    th:nth-child(3), td:nth-child(3),
-    th:nth-child(4), td:nth-child(4),
-    th:nth-child(5), td:nth-child(5),
-    th:nth-child(6), td:nth-child(6) { width: 8%; }  /* IN/OUT/RDC/ON CALL */
-    th:nth-child(n+7), td:nth-child(n+7) { width: 8%; } /* THURS–WED */
+    .status-btn {
+      display: inline-block;
+      padding: 4px 8px;
+      border: 1px solid #666;
+      border-radius: 4px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .in { background: #b6fcb6; }     /* green */
+    .out { background: #fcb6b6; }   /* red */
+    .rdc, .on { background: #ffd27f; } /* orange */
 
     button {
       margin: 0.2rem;
@@ -85,6 +87,11 @@
       padding: 0.4rem;
       font-size: 1rem;
     }
+
+    #editControls {
+      text-align: center;
+      padding: 1rem;
+    }
   </style>
 </head>
 <body>
@@ -94,6 +101,7 @@
     <h2>Main Staff</h2>
     <div id="mainControls" style="display:none;">
       <button onclick="addMainStaff()">+ Add Main Staff</button>
+      <button onclick="deleteLast('mainRows')">- Delete Last Main</button>
     </div>
     <table id="mainBoard">
       <thead>
@@ -108,6 +116,7 @@
     <h2>LG CESMs</h2>
     <div id="cesmControls" style="display:none;">
       <button onclick="addCesmStaff()">+ Add CESM Staff</button>
+      <button onclick="deleteLast('cesmRows')">- Delete Last CESM</button>
     </div>
     <table id="cesmBoard">
       <thead>
@@ -120,6 +129,11 @@
     </table>
   </div>
 
+  <div id="editControls">
+    <button id="editBtn" onclick="startEdit()">Edit</button>
+    <button id="finishBtn" style="display:none;" onclick="finishEdit()">Finish Editing</button>
+  </div>
+
   <!-- PIN Modal -->
   <div id="pinModal">
     <div id="pinBox">
@@ -130,9 +144,8 @@
   </div>
 
 <script>
-  // === CONFIG ===
   const BIN_ID = "68d62f7ad0ea881f408b72a5";
-  const API_KEY = "$2a$10$oIE7le5VeZzL9sj1TyMKDOipOvLaRbPOy6mlMmFKywMFaE0ORk4ca"; 
+  const API_KEY = "$2a$10$oIE7le5...";
   const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}/latest`;
   const UPDATE_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
   const PIN = "0563"; 
@@ -140,22 +153,18 @@
   let canEdit = false;
   let mainStaff = [];
   let cesmStaff = [];
+  let pinPending = false;
 
-  // --- Data functions ---
+  // Data functions
   async function loadData() {
     try {
-      const res = await fetch(API_URL, {
-        headers: { "X-Master-Key": API_KEY }
-      });
+      const res = await fetch(API_URL, { headers: { "X-Master-Key": API_KEY } });
       const json = await res.json();
       const data = json.record;
-
       mainStaff = data.mainStaff || [];
       cesmStaff = data.cesmStaff || [];
       renderAll();
-    } catch (err) {
-      console.error("Error loading:", err);
-    }
+    } catch (err) { console.error("Error loading:", err); }
   }
 
   async function saveData() {
@@ -163,122 +172,112 @@
     try {
       await fetch(UPDATE_URL, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Master-Key": API_KEY
-        },
+        headers: { "Content-Type": "application/json", "X-Master-Key": API_KEY },
         body: JSON.stringify(data)
       });
-    } catch (err) {
-      console.error("Error saving:", err);
-    }
+    } catch (err) { console.error("Error saving:", err); }
   }
 
-  // --- Rendering ---
-  function renderBoard(data, containerId){
-    const tbody = document.getElementById(containerId);
+  // Rendering
+  function renderBoard(data, id){
+    const tbody = document.getElementById(id);
     tbody.innerHTML = "";
-    data.forEach((s, i) => {
+    data.forEach((s,i)=>{
       let row = document.createElement("tr");
       row.innerHTML = `
-        ${cellField(s,i,containerId,"pos")}
-        ${cellField(s,i,containerId,"name")}
-        ${cellField(s,i,containerId,"in")}
-        ${cellField(s,i,containerId,"out")}
-        ${cellField(s,i,containerId,"rdc")}
-        ${cellField(s,i,containerId,"on")}
-        ${cellField(s,i,containerId,"thu")}
-        ${cellField(s,i,containerId,"fri")}
-        ${cellField(s,i,containerId,"sat")}
-        ${cellField(s,i,containerId,"sun")}
-        ${cellField(s,i,containerId,"mon")}
-        ${cellField(s,i,containerId,"tue")}
-        ${cellField(s,i,containerId,"wed")}
-        ${deleteCell(containerId,i)}
+        ${textCell(s,i,id,"pos")}
+        ${textCell(s,i,id,"name")}
+        ${statusCell(s,i,id,"in","in")}
+        ${statusCell(s,i,id,"out","out")}
+        ${statusCell(s,i,id,"rdc","rdc")}
+        ${statusCell(s,i,id,"on","on")}
+        ${textCell(s,i,id,"thu")}
+        ${textCell(s,i,id,"fri")}
+        ${textCell(s,i,id,"sat")}
+        ${textCell(s,i,id,"sun")}
+        ${textCell(s,i,id,"mon")}
+        ${textCell(s,i,id,"tue")}
+        ${textCell(s,i,id,"wed")}
       `;
       tbody.appendChild(row);
     });
   }
 
-  function cellField(staff,i,containerId,key){
-    let val = staff[key] || "";
+  function textCell(staff,i,arrId,key){
+    let val = staff[key]||"";
+    return canEdit 
+      ? `<td><input type="text" value="${val}" oninput="update('${arrId}',${i},'${key}',this.value)"></td>`
+      : `<td>${val||"&nbsp;"}</td>`;
+  }
+
+  function statusCell(staff,i,arrId,key,className){
+    let active = staff[key]==="true";
     if(canEdit){
-      return `<td><input value="${val}" 
-              oninput="updateValue('${containerId}',${i},'${key}',this.value)"></td>`;
+      return `<td><div class="status-btn ${active?className:""}" onclick="toggleStatus('${arrId}',${i},'${key}','${className}',this)">
+                ${className.toUpperCase()}
+              </div></td>`;
     } else {
-      return `<td>${val||"&nbsp;"}</td>`;
+      return `<td><div class="status-btn ${active?className:""}">${className.toUpperCase()}</div></td>`;
     }
   }
 
-  function deleteCell(containerId, i){
-    if(canEdit){
-      return `<td><button onclick="deleteRow('${containerId}',${i})">✖</button></td>`;
-    } else {
-      return ""; // no extra cell in view-only mode
-    }
-  }
-
-  window.updateValue = function(containerId,i,field,val){
-    const arr = containerId === "mainRows"? mainStaff: cesmStaff;
-    arr[i][field] = val;
+  window.toggleStatus = function(arrId,i,key,className,el){
+    const arr = arrId==="mainRows"?mainStaff:cesmStaff;
+    arr[i][key] = arr[i][key]==="true" ? "false" : "true";
+    if(arr[i][key]==="true"){ el.classList.add(className);} else{ el.classList.remove(className);}
     saveData();
   };
 
-  window.deleteRow = function(containerId,i){
-    if(confirm("Delete this row?")){
-      if(containerId === "mainRows"){
-        mainStaff.splice(i,1);
-      } else {
-        cesmStaff.splice(i,1);
-      }
-      saveData();
-      renderAll();
-    }
+  window.update=function(arrId,i,key,val){
+    const arr = arrId==="mainRows"?mainStaff:cesmStaff;
+    arr[i][key]=val;
+    saveData();
   };
 
   function renderAll(){
     renderBoard(mainStaff,"mainRows");
     renderBoard(cesmStaff,"cesmRows");
-    document.getElementById("mainControls").style.display = canEdit? "block":"none";
-    document.getElementById("cesmControls").style.display = canEdit? "block":"none";
+    document.getElementById("mainControls").style.display=canEdit?"block":"none";
+    document.getElementById("cesmControls").style.display=canEdit?"block":"none";
+    document.getElementById("editBtn").style.display=canEdit?"none":"inline-block";
+    document.getElementById("finishBtn").style.display=canEdit?"inline-block":"none";
   }
 
-  // --- Add row functions ---
-  function makeBlankStaff(){
-    return {pos:"", name:"", in:"", out:"", rdc:"", on:"",
-      thu:"", fri:"", sat:"", sun:"", mon:"", tue:"", wed:""};
+  // Add / delete last row
+  function blank(){ return {pos:"",name:"",in:"false",out:"false",rdc:"false",on:"false",
+    thu:"",fri:"",sat:"",sun:"",mon:"",tue:"",wed:""}; }
+
+  window.addMainStaff=()=>{mainStaff.push(blank());saveData();renderAll();}
+  window.addCesmStaff=()=>{cesmStaff.push(blank());saveData();renderAll();}
+
+  window.deleteLast=function(arrId){
+    if(arrId==="mainRows" && mainStaff.length){ mainStaff.pop();}
+    if(arrId==="cesmRows" && cesmStaff.length){ cesmStaff.pop();}
+    saveData();renderAll();
   }
 
-  window.addMainStaff = function(){
-    mainStaff.push(makeBlankStaff());
+  // Edit workflow
+  function startEdit(){ 
+    pinPending=true; 
+    document.getElementById("pinModal").style.display="flex"; 
+  }
+  function finishEdit(){
+    canEdit=false;
     saveData();
     renderAll();
-  };
-
-  window.addCesmStaff = function(){
-    cesmStaff.push(makeBlankStaff());
-    saveData();
-    renderAll();
-  };
-
-  // --- PIN ---
-  document.body.addEventListener("dblclick",()=>{
-    document.getElementById("pinModal").style.display="flex";
-  });
-
-  window.checkPin=function(){
+  }
+  function checkPin(){
     if(document.getElementById("pinInput").value===PIN){
-      canEdit=true;
-      renderAll();
+      if(pinPending){ 
+        canEdit=true; 
+        renderAll(); 
+      }
       document.getElementById("pinModal").style.display="none";
-    }else{
-      alert("Wrong PIN");
-    }
-  };
+      pinPending=false;
+    }else alert("Wrong PIN");
+  }
 
-  // auto refresh
-  setInterval(loadData,10000);
-  loadData();
+  loadData(); setInterval(loadData,10000);
 </script>
 </body>
 </html>
