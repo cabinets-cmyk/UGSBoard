@@ -32,7 +32,7 @@
       border-collapse: collapse;
       margin-bottom: 1rem;
       background: #fff;
-      table-layout: fixed; /* equalize columns */
+      table-layout: fixed;
     }
     th, td {
       border: 1px solid #333;
@@ -53,14 +53,14 @@
       padding: 0.2rem;
     }
 
-    /* Column widths */
+    /* Column widths matching your Word doc */
     th:nth-child(1), td:nth-child(1) { width: 10%; }  /* POSITION */
     th:nth-child(2), td:nth-child(2) { width: 12%; }  /* NAME */
     th:nth-child(3), td:nth-child(3),
     th:nth-child(4), td:nth-child(4),
     th:nth-child(5), td:nth-child(5),
-    th:nth-child(6), td:nth-child(6) { width: 8%; }  /* IN, OUT, RDC, ON CALL */
-    th:nth-child(n+7), td:nth-child(n+7) { width: 8%; } /* Days THU–WED */
+    th:nth-child(6), td:nth-child(6) { width: 8%; }  /* IN/OUT/RDC/ON CALL */
+    th:nth-child(n+7), td:nth-child(n+7) { width: 8%; } /* THURS–WED */
 
     button {
       margin: 0.2rem;
@@ -133,7 +133,8 @@
   // === CONFIG ===
   const BIN_ID = "68d62f7ad0ea881f408b72a5";
   const API_KEY = "$2a$10$oIE7le5VeZzL9sj1TyMKDOipOvLaRbPOy6mlMmFKywMFaE0ORk4ca"; 
-  const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+  const API_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}/latest`;
+  const UPDATE_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
   const PIN = "0563"; 
 
   let canEdit = false;
@@ -160,7 +161,7 @@
   async function saveData() {
     const data = { mainStaff, cesmStaff };
     try {
-      await fetch(API_URL, {
+      await fetch(UPDATE_URL, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -180,26 +181,26 @@
     data.forEach((s, i) => {
       let row = document.createElement("tr");
       row.innerHTML = `
-        ${cellField(data,s,i,containerId,"pos")}
-        ${cellField(data,s,i,containerId,"name")}
-        ${cellField(data,s,i,containerId,"in")}
-        ${cellField(data,s,i,containerId,"out")}
-        ${cellField(data,s,i,containerId,"rdc")}
-        ${cellField(data,s,i,containerId,"on")}
-        ${cellField(data,s,i,containerId,"thu")}
-        ${cellField(data,s,i,containerId,"fri")}
-        ${cellField(data,s,i,containerId,"sat")}
-        ${cellField(data,s,i,containerId,"sun")}
-        ${cellField(data,s,i,containerId,"mon")}
-        ${cellField(data,s,i,containerId,"tue")}
-        ${cellField(data,s,i,containerId,"wed")}
+        ${cellField(s,i,containerId,"pos")}
+        ${cellField(s,i,containerId,"name")}
+        ${cellField(s,i,containerId,"in")}
+        ${cellField(s,i,containerId,"out")}
+        ${cellField(s,i,containerId,"rdc")}
+        ${cellField(s,i,containerId,"on")}
+        ${cellField(s,i,containerId,"thu")}
+        ${cellField(s,i,containerId,"fri")}
+        ${cellField(s,i,containerId,"sat")}
+        ${cellField(s,i,containerId,"sun")}
+        ${cellField(s,i,containerId,"mon")}
+        ${cellField(s,i,containerId,"tue")}
+        ${cellField(s,i,containerId,"wed")}
         ${deleteCell(containerId,i)}
       `;
       tbody.appendChild(row);
     });
   }
 
-  function cellField(arr, staff, i, containerId, key){
+  function cellField(staff,i,containerId,key){
     let val = staff[key] || "";
     if(canEdit){
       return `<td><input value="${val}" 
@@ -213,7 +214,7 @@
     if(canEdit){
       return `<td><button onclick="deleteRow('${containerId}',${i})">✖</button></td>`;
     } else {
-      return ""; // no extra cell when not editing
+      return ""; // no extra cell in view-only mode
     }
   }
 
@@ -238,7 +239,6 @@
   function renderAll(){
     renderBoard(mainStaff,"mainRows");
     renderBoard(cesmStaff,"cesmRows");
-    // show/hide add-row buttons
     document.getElementById("mainControls").style.display = canEdit? "block":"none";
     document.getElementById("cesmControls").style.display = canEdit? "block":"none";
   }
@@ -267,8 +267,7 @@
   });
 
   window.checkPin=function(){
-    const input=document.getElementById("pinInput").value;
-    if(input===PIN){
+    if(document.getElementById("pinInput").value===PIN){
       canEdit=true;
       renderAll();
       document.getElementById("pinModal").style.display="none";
